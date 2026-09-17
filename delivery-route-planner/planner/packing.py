@@ -140,3 +140,30 @@ def pack_area(
         trip.deliveries.append(delivery)
 
     return open_trips
+
+
+# ---------------------------------------------------------------------------
+# Step 6: Public entry point
+# ---------------------------------------------------------------------------
+
+def build_trips(
+    deliveries: list[Delivery],
+    strategy: str = DEFAULT_STRATEGY,
+    capacity_g: int = VEHICLE_CAPACITY_G,
+) -> list[Trip]:
+    """Organize deliveries into capacity-respecting trips.
+
+    Each area is packed independently, then all trips are sorted
+    by dispatch order: (priority ASC, earliest_id ASC).
+    """
+    select_fn = _get_select_fn(strategy)
+    area_groups = group_by_area(deliveries)
+
+    all_trips: list[Trip] = []
+    for area_deliveries in area_groups.values():
+        sorted_deliveries = sort_for_packing(area_deliveries)
+        area_trips = pack_area(sorted_deliveries, select_fn, capacity_g)
+        all_trips.extend(area_trips)
+
+    all_trips.sort(key=lambda t: (t.priority, t.earliest_id))
+    return all_trips
