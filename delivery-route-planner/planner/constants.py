@@ -46,5 +46,7 @@ REASON_MALFORMED_ROW: str = "MALFORMED_ROW"
 STRATEGY_BEST_FIT: str = "best-fit"
 STRATEGY_FIRST_FIT: str = "first-fit"
 
-# Our decision: best-fit as default because it tends to produce fewer trips.
+# Our decision: best-fit is the default because it produced tighter packing on
+# the included comparison case. It remains a heuristic and is not guaranteed
+# to be optimal.
 DEFAULT_STRATEGY: str = STRATEGY_BEST_FIT

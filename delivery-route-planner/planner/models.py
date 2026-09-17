@@ -46,10 +46,9 @@ class Trip:
         """Sum of all delivery weights in grams."""
         return sum(d.weight_g for d in self.deliveries)
 
-    @property
-    def remaining_g(self) -> int:
-        """Remaining vehicle capacity in grams."""
-        return VEHICLE_CAPACITY_G - self.total_weight_g
+    def remaining_g(self, capacity_g: int = VEHICLE_CAPACITY_G) -> int:
+        """Remaining capacity in grams, against the given vehicle capacity."""
+        return capacity_g - self.total_weight_g
 
     @property
     def priority(self) -> int:
@@ -75,7 +74,6 @@ class Trip:
         """Smallest delivery ID in this trip, used for dispatch tie-breaking."""
         return min(d.delivery_id for d in self.deliveries)
 
-    @property
-    def utilization(self) -> float:
-        """Fraction of vehicle capacity used (0.0 to 1.0)."""
-        return self.total_weight_g / VEHICLE_CAPACITY_G
+    def utilization(self, capacity_g: int = VEHICLE_CAPACITY_G) -> float:
+        """Fraction of the given vehicle capacity used (0.0 to 1.0)."""
+        return self.total_weight_g / capacity_g
