@@ -35,6 +35,8 @@ def _parse_weight_g(raw_weight: str) -> int:
     if the value is not a positive whole number of grams.
     """
     weight_decimal = Decimal(raw_weight.strip()) * GRAMS_PER_KG
+    if not weight_decimal.is_finite():
+        raise ValueError(f"weight {raw_weight.strip()} is not a finite number")
     if weight_decimal != int(weight_decimal):
         raise ValueError(f"weight {raw_weight.strip()} kg is not a whole number of grams")
     weight_g = int(weight_decimal)
@@ -73,7 +75,9 @@ def _validate_row(
     raw_row = {k: (v if v is not None else "") for k, v in row.items()}
 
     # 1. Missing or extra fields, or any required field is None.
-    if None in row.values() or any(k not in row for k in _EXPECTED_COLUMNS):
+    if None in row or None in row.values() or any(
+        k not in row for k in _EXPECTED_COLUMNS
+    ):
         return RejectedDelivery(
             raw_row=raw_row,
             reason=REASON_MALFORMED_ROW,
@@ -119,8 +123,8 @@ def _validate_row(
 
     # 6. Weight must not exceed vehicle capacity.
     if weight_g > VEHICLE_CAPACITY_G:
-        weight_kg_str = f"{weight_g / GRAMS_PER_KG:.2f}"
-        cap_kg_str = f"{VEHICLE_CAPACITY_G / GRAMS_PER_KG:.0f}"
+        weight_kg_str = f"{Decimal(weight_g) / GRAMS_PER_KG:.2f}"
+        cap_kg_str = f"{Decimal(VEHICLE_CAPACITY_G) / GRAMS_PER_KG:.0f}"
         return RejectedDelivery(
             raw_row=raw_row,
             reason=REASON_EXCEEDS_CAPACITY,
@@ -177,6 +181,10 @@ def load_deliveries(
                 f"Expected CSV columns {_EXPECTED_COLUMNS}, "
                 f"got {list(reader.fieldnames)}"
             )
+
+        # Canonicalize field names so row keys match _EXPECTED_COLUMNS
+        # even when the original header had different casing or whitespace.
+        reader.fieldnames = _EXPECTED_COLUMNS
 
         for row in reader:
             result = _validate_row(row, seen_ids, area_display_map)

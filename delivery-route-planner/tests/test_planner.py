@@ -953,3 +953,46 @@ class TestE2ESampleEmpty:
         output = capsys.readouterr().out
         assert "Trips:               0" in output
         assert "No trips planned." in output
+
+
+# ===========================================================================
+# LOADER BUGFIX TESTS
+# ===========================================================================
+
+
+class TestLoaderExtraField:
+    """BUG 1: A row with extra trailing fields must be rejected."""
+
+    def test_extra_field_rejected_as_malformed(self, tmp_path: Path) -> None:
+        csv = "id,area,priority,weight_kg\n1,Maadi,1,2.0,EXTRA\n"
+        _, rejected = load_deliveries(_write_csv(tmp_path, csv))
+        assert len(rejected) == 1
+        assert rejected[0].reason == "MALFORMED_ROW"
+
+
+class TestLoaderNormalizedHeaders:
+    """BUG 2: Headers with different casing/whitespace must be accepted."""
+
+    def test_header_with_spaces_and_casing(self, tmp_path: Path) -> None:
+        csv = " ID , Area , Priority , Weight_kg \n1,Maadi,1,2.0\n"
+        accepted, rejected = load_deliveries(_write_csv(tmp_path, csv))
+        assert len(accepted) == 1
+        assert len(rejected) == 0
+        assert accepted[0].delivery_id == 1
+        assert accepted[0].weight_g == 2000
+
+
+class TestLoaderNonFiniteWeight:
+    """BUG 4: Non-finite Decimal values must be rejected."""
+
+    def test_infinity_rejected_as_invalid_weight(self, tmp_path: Path) -> None:
+        csv = "id,area,priority,weight_kg\n1,Maadi,1,Infinity\n"
+        _, rejected = load_deliveries(_write_csv(tmp_path, csv))
+        assert len(rejected) == 1
+        assert rejected[0].reason == "INVALID_WEIGHT"
+
+    def test_negative_infinity_rejected(self, tmp_path: Path) -> None:
+        csv = "id,area,priority,weight_kg\n1,Maadi,1,-Infinity\n"
+        _, rejected = load_deliveries(_write_csv(tmp_path, csv))
+        assert len(rejected) == 1
+        assert rejected[0].reason == "INVALID_WEIGHT"
