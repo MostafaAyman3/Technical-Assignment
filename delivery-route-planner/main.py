@@ -1,10 +1,7 @@
 """Thin entry point for the Delivery Route Planner."""
 
+import sys
 
-def main() -> None:
-    """Placeholder until planner.cli is implemented."""
-    print("not implemented yet")
+from planner.cli import main
 
-
-if __name__ == "__main__":
-    main()
+sys.exit(main())
