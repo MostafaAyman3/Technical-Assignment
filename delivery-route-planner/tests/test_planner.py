@@ -733,16 +733,21 @@ class TestLoaderAreaNormalization:
         assert accepted[0].area_key == "maadi"
         assert accepted[0].area_display == "Maadi"
 
-    def test_first_spelling_is_display(self, tmp_path: Path) -> None:
+    def test_three_spellings_share_one_area_key(self, tmp_path: Path) -> None:
         csv = (
             "id,area,priority,weight_kg\n"
             "1, maadi ,1,2.0\n"
             "2,MAADI,1,3.0\n"
+            "3,Maadi,1,1.0\n"
         )
         accepted, _ = load_deliveries(_write_csv(tmp_path, csv))
-        # Both share key "maadi"; display is first seen = "maadi" (trimmed)
+        # All three share key "maadi"; display is first seen = "maadi"
+        assert accepted[0].area_key == "maadi"
+        assert accepted[1].area_key == "maadi"
+        assert accepted[2].area_key == "maadi"
         assert accepted[0].area_display == "maadi"
         assert accepted[1].area_display == "maadi"
+        assert accepted[2].area_display == "maadi"
 
     def test_empty_area_becomes_unknown(self, tmp_path: Path) -> None:
         csv = "id,area,priority,weight_kg\n1,,1,2.0\n"
@@ -801,3 +806,150 @@ class TestLoaderEdgeCasesFile:
             "INVALID_PRIORITY",
             "MALFORMED_ROW",
         ]
+
+
+# ===========================================================================
+# P6 — ADDITIONAL COVERAGE FOR THE 30-TEST CHECKLIST
+# ===========================================================================
+
+from planner.cli import main as cli_main
+
+
+class TestDecimalPrecisionGuard:
+    """Test #12: 4.5 + 3.5 + 2.0 kg must sum to exactly 10000g."""
+
+    def test_sum_is_exactly_10000g(self, tmp_path: Path) -> None:
+        csv = (
+            "id,area,priority,weight_kg\n"
+            "1,A,1,4.5\n"
+            "2,A,1,3.5\n"
+            "3,A,1,2.0\n"
+        )
+        accepted, _ = load_deliveries(_write_csv(tmp_path, csv))
+        total = sum(d.weight_g for d in accepted)
+        assert total == 10000
+
+
+class TestSingleDeliveryProducesOneTrip:
+    """Test #13: a single delivery always produces exactly one trip."""
+
+    def test_one_delivery_one_trip(self) -> None:
+        trips = build_trips([_d(1, "Maadi", 1, 5000)])
+        assert len(trips) == 1
+        assert _ids(trips[0]) == [1]
+
+
+class TestNoTripExceedsCapacityAcrossSampleFiles:
+    """Test #14: no trip exceeds vehicle capacity for any sample file."""
+
+    @pytest.mark.parametrize("csv_path", [
+        "data/sample_deliveries.csv",
+        "data/sample_merge_demo.csv",
+        "data/sample_strategy_demo.csv",
+        "data/sample_edge_cases.csv",
+    ])
+    def test_capacity_respected(self, csv_path: str) -> None:
+        accepted, _ = load_deliveries(Path(csv_path))
+        trips = build_trips(accepted)
+        for trip in trips:
+            assert trip.total_weight_g <= VEHICLE_CAPACITY_G, (
+                f"{csv_path}: trip with ids {_ids(trip)} weighs {trip.total_weight_g}g"
+            )
+
+
+class TestTripPriorityEqualsMinDeliveryPriority:
+    """Test #17: trip.priority is the minimum priority of its deliveries."""
+
+    def test_mixed_priority_trip(self) -> None:
+        trip = Trip([
+            _d(1, "Maadi", 3, 2000),
+            _d(2, "Maadi", 1, 3000),
+            _d(3, "Maadi", 5, 1000),
+        ])
+        assert trip.priority == 1
+        assert trip.priority == min(d.priority for d in trip.deliveries)
+
+
+class TestBuildTripsIsDeterministic:
+    """Test #20: running build_trips twice yields identical results."""
+
+    def test_two_runs_produce_identical_output(self) -> None:
+        deliveries = [
+            _d(1, "Nasr City", 2, 4500),
+            _d(2, "Maadi", 1, 2000),
+            _d(3, "Nasr City", 3, 1200),
+            _d(4, "Zamalek", 1, 7000),
+            _d(5, "Maadi", 2, 3500),
+        ]
+        run1 = build_trips(deliveries)
+        run2 = build_trips(deliveries)
+        assert len(run1) == len(run2)
+        for t1, t2 in zip(run1, run2):
+            assert _ids(t1) == _ids(t2)
+
+
+# ---------------------------------------------------------------------------
+# End-to-end integration tests via cli.main()
+# ---------------------------------------------------------------------------
+
+class TestE2ESampleDeliveries:
+    """Test #26: sample_deliveries.csv → 3 trips, 0 merges."""
+
+    def test_trip_count_and_merge_count(self, capsys: pytest.CaptureFixture[str]) -> None:
+        exit_code = cli_main(["data/sample_deliveries.csv"])
+        assert exit_code == 0
+        output = capsys.readouterr().out
+        assert "Trips:               3" in output
+        assert "Merges applied:      0" in output
+
+
+class TestE2ESampleMergeDemo:
+    """Test #27: sample_merge_demo.csv → 5 trips without merge, 3 with."""
+
+    def test_no_merge_produces_five_trips(self, capsys: pytest.CaptureFixture[str]) -> None:
+        exit_code = cli_main(["data/sample_merge_demo.csv", "--no-merge"])
+        assert exit_code == 0
+        output = capsys.readouterr().out
+        assert "Trips:               5" in output
+
+    def test_merge_produces_three_trips(self, capsys: pytest.CaptureFixture[str]) -> None:
+        exit_code = cli_main(["data/sample_merge_demo.csv"])
+        assert exit_code == 0
+        output = capsys.readouterr().out
+        assert "Trips:               3" in output
+        assert "Merges applied:      2" in output
+
+
+class TestE2EStrategyDemo2x2:
+    """Test #28: sample_strategy_demo.csv full 2×2 matrix."""
+
+    def test_best_fit_no_merge(self, capsys: pytest.CaptureFixture[str]) -> None:
+        exit_code = cli_main(["data/sample_strategy_demo.csv", "--no-merge"])
+        assert exit_code == 0
+        assert "Trips:               4" in capsys.readouterr().out
+
+    def test_best_fit_merge(self, capsys: pytest.CaptureFixture[str]) -> None:
+        exit_code = cli_main(["data/sample_strategy_demo.csv"])
+        assert exit_code == 0
+        assert "Trips:               3" in capsys.readouterr().out
+
+    def test_first_fit_no_merge(self, capsys: pytest.CaptureFixture[str]) -> None:
+        exit_code = cli_main(["data/sample_strategy_demo.csv", "--no-merge", "--strategy", "first-fit"])
+        assert exit_code == 0
+        assert "Trips:               5" in capsys.readouterr().out
+
+    def test_first_fit_merge(self, capsys: pytest.CaptureFixture[str]) -> None:
+        exit_code = cli_main(["data/sample_strategy_demo.csv", "--strategy", "first-fit"])
+        assert exit_code == 0
+        assert "Trips:               4" in capsys.readouterr().out
+
+
+class TestE2ESampleEmpty:
+    """Test #29: sample_empty.csv → 0 trips and exit code 0."""
+
+    def test_empty_file_exits_zero(self, capsys: pytest.CaptureFixture[str]) -> None:
+        exit_code = cli_main(["data/sample_empty.csv"])
+        assert exit_code == 0
+        output = capsys.readouterr().out
+        assert "Trips:               0" in output
+        assert "No trips planned." in output
