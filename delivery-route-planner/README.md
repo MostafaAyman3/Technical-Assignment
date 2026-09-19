@@ -98,11 +98,24 @@ Average utilization: 60.7%
 | `--no-merge`                  | Disable the cross-area merge extension       |
 
 ```bash
-# First-Fit packing, no merge
+# Default (Best-Fit + merge enabled)
+python main.py data/sample_deliveries.csv
+
+# Best-Fit, merge disabled
+python main.py data/sample_deliveries.csv --no-merge
+
+# First-Fit, merge enabled
+python main.py data/sample_deliveries.csv --strategy first-fit
+
+# First-Fit, merge disabled
 python main.py data/sample_strategy_demo.csv --strategy first-fit --no-merge
 
-# Default Best-Fit packing, merge disabled
+# Merge demo: compare with and without merge
+python main.py data/sample_merge_demo.csv
 python main.py data/sample_merge_demo.csv --no-merge
+
+# Edge cases: validation rejections
+python main.py data/sample_edge_cases.csv
 ```
 
 ## How to Run the Tests
@@ -112,7 +125,7 @@ pip install pytest
 python -m pytest tests/test_planner.py -v
 ```
 
-89 tests cover loading, validation, packing, merging, reporting, and
+93 tests cover loading, validation, packing, merging, reporting, and
 end-to-end integration across all sample files.
 
 ---
@@ -344,7 +357,7 @@ delivery-route-planner/
 │   ├── reporting.py         # Pure formatting, returns strings, never prints
 │   └── cli.py               # argparse, orchestration, error handling, printing
 ├── tests/
-│   └── test_planner.py      # 89 tests (loader, packing, merging, reporting, E2E)
+│   └── test_planner.py      # 93 tests (loader, packing, merging, reporting, E2E)
 └── data/
     ├── sample_deliveries.csv
     ├── sample_strategy_demo.csv
